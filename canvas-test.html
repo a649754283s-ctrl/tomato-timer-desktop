@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Canvas Test</title>
+<style>
+body{background:#1a1a2e;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0}
+</style>
+</head>
+<body>
+<canvas id="c" width="512" height="570" style="border:3px solid red"></canvas>
+<script>
+var canvas=document.getElementById('c');
+var ctx=canvas.getContext('2d');
+
+// Fill background
+ctx.fillStyle='#d4a84b';
+ctx.fillRect(0,0,512,570);
+
+// Draw some lines
+ctx.strokeStyle='#000';
+ctx.lineWidth=2;
+for(var i=0;i<10;i++){
+  ctx.beginPath();ctx.moveTo(24,24+i*58);ctx.lineTo(24+8*58,24+i*58);ctx.stroke();
+}
+for(var j=0;j<9;j++){
+  ctx.beginPath();ctx.moveTo(24+j*58,24);ctx.lineTo(24+j*58,24+9*58);ctx.stroke();
+}
+
+// Draw a piece
+var grad=ctx.createRadialGradient(140-8,140-8,3,140,140,23);
+grad.addColorStop(0,'#fef9e7');
+grad.addColorStop(0.38,'#e8c97a');
+grad.addColorStop(1,'#c8a04a');
+ctx.fillStyle=grad;
+ctx.beginPath();ctx.arc(140,140,22,0,Math.PI*2);ctx.fill();
+ctx.strokeStyle='#8b0000';ctx.lineWidth=2.5;ctx.stroke();
+ctx.fillStyle='#b22222';ctx.font='bold 22px Microsoft YaHei';ctx.textAlign='center';ctx.textBaseline='middle';
+ctx.fillText('帅',140,141);
+
+// Debug text
+ctx.fillStyle='#000';ctx.font='14px Arial';ctx.fillText('Canvas OK',256,560);
+</script>
+</body>
+</html>

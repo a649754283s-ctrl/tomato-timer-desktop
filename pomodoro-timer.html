@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>番茄计时器</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:'Microsoft YaHei',sans-serif;
+  background: url('pomodoro-bg.png') center/cover no-repeat fixed;
+  display:flex;justify-content:center;align-items:center;
+  min-height:100vh;user-select:none;
+  position:relative;
+}
+/* Dark overlay for readability */
+body::before{
+  content:'';position:fixed;inset:0;
+  background:rgba(0,0,0,.55);
+  z-index:0;
+}
+/* Lift content above overlay */
+body>*{position:relative;z-index:1;}
+
+.clock{
+  background:#16213e;
+  border-radius:50%;
+  width:320px;height:320px;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  position:relative;
+  box-shadow:0 12px 48px rgba(0,0,0,.5),0 0 0 8px #2a3a5c,0 0 0 12px #654321;
+}
+
+/* Canvas ring */
+.ring-wrap{
+  position:absolute;inset:-16px;
+  display:flex;align-items:center;justify-content:center;
+}
+.ring-wrap canvas{width:352px;height:352px;}
+
+.time{
+  font-size:72px;font-weight:900;color:#ffd700;
+  font-family:'Courier New',monospace;
+  letter-spacing:4px;z-index:1;
+  text-shadow:0 0 10px rgba(255,215,0,.3);
+}
+.label{
+  font-size:14px;color:#888;z-index:1;
+  letter-spacing:4px;margin-top:2px;
+  text-transform:uppercase;
+}
+.session{
+  font-size:12px;color:#555;z-index:1;
+  margin-top:8px;letter-spacing:2px;
+}
+
+/* Buttons */
+.controls{
+  margin-top:32px;display:flex;gap:16px;
+}
+.btn{
+  width:56px;height:56px;border-radius:50%;
+  border:2px solid #333;background:#16213e;
+  color:#ccc;font-size:20px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .15s;
+}
+.btn:hover{background:#2a3a5c;border-color:#ffd700;color:#ffd700;}
+.btn:active{transform:scale(.95)}
+.btn.play{border-color:#4caf50;color:#4caf50}
+.btn.play:hover{background:#1a3a1a}
+.btn.play.paused{border-color:#ff9800;color:#ff9800}
+.btn.play.paused:hover{background:#3a2a00}
+
+/* Preset chips */
+.presets{
+  display:flex;gap:10px;margin-top:24px;
+}
+.chip{
+  padding:6px 16px;border-radius:20px;
+  border:1.5px solid #333;background:transparent;
+  color:#999;font-size:13px;cursor:pointer;
+  font-family:inherit;transition:all .15s;
+}
+.chip:hover{color:#ffd700;border-color:#ffd700}
+.chip.active{background:#ffd700;color:#1a1a2e;border-color:#ffd700;font-weight:600}
+
+/* Mode badge */
+.mode-badge{
+  position:absolute;top:-14px;
+  background:#ffd700;color:#1a1a2e;
+  font-size:11px;font-weight:700;padding:4px 14px;
+  border-radius:12px;letter-spacing:2px;z-index:2;
+}
+
+/* Footer */
+.footer{
+  margin-top:28px;color:#444;font-size:11px;
+  text-align:center;letter-spacing:2px;
+}
+.footer span{color:#ffd700}
+</style>
+</head>
+<body>
+
+<div style="display:flex;flex-direction:column;align-items:center">
+
+  <!-- Clock -->
+  <div class="clock" id="clock">
+    <div class="mode-badge" id="modeBadge">专注</div>
+    <div class="ring-wrap"><canvas id="ring" width="704" height="704"></canvas></div>
+    <div class="time" id="timeDisplay">25:00</div>
+    <div class="label" id="modeLabel">专注时间</div>
+    <div class="session" id="sessionCount">第 1 轮</div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button class="btn" id="resetBtn" title="重置">⟲</button>
+    <button class="btn play paused" id="playBtn" title="开始">▶</button>
+    <button class="btn" id="skipBtn" title="跳过">⏭</button>
+  </div>
+
+  <!-- Presets -->
+  <div class="presets">
+    <button class="chip" data-work="15" data-break="3">15 / 3</button>
+    <button class="chip active" data-work="25" data-break="5">25 / 5</button>
+    <button class="chip" data-work="45" data-break="10">45 / 10</button>
+    <button class="chip" data-work="60" data-break="15">60 / 15</button>
+  </div>
+
+  <div class="footer">已完成 <span id="doneCount">0</span> 个番茄</div>
+</div>
+
+<script>
+(function(){
+var WORK=25*60, BREAK=5*60;
+var totalSec=WORK, remaining=WORK;
+var isWork=true, running=false, timer=null;
+var sessions=0, doneTomatoes=0;
+var prevIsWork=null, prevRunning=null;
+
+var ring=document.getElementById('ring');
+var ctx=ring.getContext('2d');
+var timeDisplay=document.getElementById('timeDisplay');
+var modeLabel=document.getElementById('modeLabel');
+var modeBadge=document.getElementById('modeBadge');
+var sessionCount=document.getElementById('sessionCount');
+var playBtn=document.getElementById('playBtn');
+var doneEl=document.getElementById('doneCount');
+
+var ding;
+try{ding=new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f3+Af39/gIB/f39/gH9/fwAAAAA=');}catch(e){ding=null;}
+
+function fmt(s){
+  var m=Math.floor(s/60), sec=s%60;
+  return (m<10?'0':'')+m+':'+(sec<10?'0':'')+sec;
+}
+
+var PI2=Math.PI*2;
+function drawRing(){
+  var W=ring.width, H=ring.height, cx=W/2, cy=H/2, r=155;
+  ctx.clearRect(0,0,W,H);
+
+  // Track background (subtle ring)
+  ctx.beginPath();ctx.arc(cx,cy,r,0,PI2);
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=14;ctx.stroke();
+
+  // Progress arc color
+  var frac=remaining/totalSec;
+  var a0=-Math.PI/2, endAngle=a0+PI2*frac;
+
+  // Draw progress as small segments for gradient effect
+  var steps=Math.floor(frac*180);
+  if(steps<1)steps=1;
+  ctx.lineWidth=14;ctx.lineCap='butt';
+  for(var i=0;i<steps;i++){
+    var s0=a0+(i/steps)*PI2*frac;
+    var s1=a0+((i+1)/steps)*PI2*frac;
+    var t=i/steps;
+    var r_col=isWork?Math.round(255-30*t):Math.round(76+40*t);
+    var g_col=isWork?Math.round(105+70*t):Math.round(175-25*t);
+    var b_col=isWork?Math.round(0+60*t):Math.round(80-50*t);
+    ctx.beginPath();ctx.arc(cx,cy,r,s0,s1);
+    ctx.strokeStyle='rgb('+r_col+','+g_col+','+b_col+')';
+    ctx.stroke();
+  }
+
+  // Knob at leading edge
+  var ex=cx+r*Math.cos(endAngle), ey=cy+r*Math.sin(endAngle);
+  ctx.beginPath();ctx.arc(ex,ey,8,0,PI2);
+  ctx.fillStyle='#fff';ctx.shadowColor=isWork?'rgba(255,105,0,.6)':'rgba(76,175,80,.6)';
+  ctx.shadowBlur=10;ctx.fill();
+  ctx.shadowBlur=0;
+}
+
+function updateUI(){
+  timeDisplay.textContent=fmt(remaining);
+  drawRing();
+
+  if(isWork!==prevIsWork){
+    prevIsWork=isWork;
+    if(isWork){
+      modeLabel.textContent='专注时间';
+      modeBadge.textContent='专注';
+      modeBadge.style.background='#FF6900';
+      modeBadge.style.color='#fff';
+    }else{
+      modeLabel.textContent='休息时间';
+      modeBadge.textContent='休息';
+      modeBadge.style.background='#4CAF50';
+      modeBadge.style.color='#fff';
+    }
+  }
+  document.title=(isWork?'🍅 ':'☕ ')+fmt(remaining)+(isWork?' · 专注':' · 休息');
+
+  if(running!==prevRunning){
+    prevRunning=running;
+    if(running){
+      playBtn.textContent='⏸';
+      playBtn.classList.remove('paused');
+    }else{
+      playBtn.textContent='▶';
+      playBtn.classList.add('paused');
+    }
+  }
+}
+
+function tick(){
+  if(remaining<=0)return finish();
+  remaining--;
+  updateUI();
+}
+
+function finish(){
+  clearInterval(timer);timer=null;running=false;
+  playDing();
+  flashTitle();
+
+  if(isWork){
+    doneTomatoes++;
+    doneEl.textContent=doneTomatoes;
+  }
+
+  // Auto-switch mode
+  isWork=!isWork;
+  totalSec=isWork?WORK:BREAK;
+  remaining=totalSec;
+  if(!isWork)sessions++;
+  sessionCount.textContent=isWork?'第 '+(sessions+1)+' 轮':'休息中';
+
+  // Auto-start next
+  updateUI();
+  start();
+}
+
+function playDing(){
+  if(ding){ding.currentTime=0;ding.play().catch(function(){});}
+  // Also try beep
+  try{var a=new AudioContext();var o=a.createOscillator();var g=a.createGain();o.connect(g);g.connect(a.destination);o.frequency.value=880;g.gain.value=.15;o.start();o.stop(a.currentTime+.15);setTimeout(function(){a.close();},200);}catch(e){}
+}
+
+var flashTimers=[];
+function flashTitle(){
+  flashTimers.forEach(function(id){clearTimeout(id);});
+  flashTimers=[];
+  for(var i=0;i<6;i++){
+    flashTimers.push(setTimeout(function(){document.title='⏰ 时间到！';},i*600));
+    flashTimers.push(setTimeout(function(){document.title=isWork?'🍅 '+fmt(remaining)+' · 专注':'☕ '+fmt(remaining)+' · 休息';},i*600+300));
+  }
+  flashTimers.push(setTimeout(function(){updateUI();flashTimers=[];},3600));
+}
+
+function start(){
+  if(running)return;
+  running=true;
+  updateUI();
+  timer=setInterval(tick,1000);
+}
+
+function pause(){
+  running=false;
+  clearInterval(timer);timer=null;
+  updateUI();
+}
+
+function reset(){
+  running=false;clearInterval(timer);timer=null;
+  isWork=true;sessions=0;doneTomatoes=0;
+  totalSec=WORK;remaining=WORK;
+  doneEl.textContent='0';
+  sessionCount.textContent='第 1 轮';
+  updateUI();
+}
+
+function skip(){
+  if(running){clearInterval(timer);timer=null;running=false;}
+  remaining=0;
+  finish();
+}
+
+// Buttons
+playBtn.addEventListener('click',function(){
+  if(running)pause();else start();
+});
+document.getElementById('resetBtn').addEventListener('click',reset);
+document.getElementById('skipBtn').addEventListener('click',skip);
+
+// Presets
+var chips=document.querySelectorAll('.chip');
+chips.forEach(function(c){
+  c.addEventListener('click',function(){
+    chips.forEach(function(x){x.classList.remove('active');});
+    c.classList.add('active');
+    WORK=parseInt(c.dataset.work)*60;
+    BREAK=parseInt(c.dataset.break)*60;
+    reset();
+  });
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown',function(e){
+  if(e.code==='Space'){e.preventDefault();if(running)pause();else start();}
+  if(e.code==='KeyR')reset();
+  if(e.code==='KeyS')skip();
+});
+
+// Init
+updateUI();
+})();
+</script>
+</body>
+</html>

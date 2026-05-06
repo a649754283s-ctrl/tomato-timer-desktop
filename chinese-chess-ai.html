@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>中国象棋 AI 辅助器</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Microsoft YaHei',sans-serif;background:#1a1a2e;display:flex;justify-content:center;align-items:center;min-height:100vh;user-select:none}
+.main{display:flex;gap:24px;align-items:flex-start;padding:16px;flex-wrap:wrap;justify-content:center}
+
+/* 棋盘区域 */
+.board-wrap{position:relative;width:512px;height:570px;background:#d4a84b;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.5);border:6px solid #654321}
+
+/* 棋盘线条 - 用 div 画线 */
+.line-h{position:absolute;left:24px;right:24px;height:1px;background:#8b6914;pointer-events:none}
+.line-v{position:absolute;top:24px;bottom:24px;width:1px;background:#8b6914;pointer-events:none}
+.line-v-half{position:absolute;width:1px;background:#8b6914;pointer-events:none}
+.line-d{position:absolute;pointer-events:none}
+.line-d::after{content:'';position:absolute;width:1px;background:#8b6914;transform-origin:0 0;pointer-events:none}
+
+/* 楚河汉界 */
+.river-text{position:absolute;left:24px;right:24px;top:256px;height:58px;display:flex;align-items:center;justify-content:space-around;font-size:20px;color:#6b5a3e;font-weight:700;font-family:'KaiTi','Microsoft YaHei',serif;letter-spacing:4px;pointer-events:none;z-index:0}
+
+/* 棋子 */
+.piece{position:absolute;width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;cursor:pointer;z-index:2;border:2.5px solid #654321;
+  background:radial-gradient(circle at 35% 30%,#fef9e7,#e8c97a 38%,#c8a04a 100%);
+  transform:translate(-50%,-50%)}
+.piece.red{color:#b22222;border-color:#8b0000;box-shadow:0 2px 6px rgba(178,34,34,.4)}
+.piece.black{color:#1a1a2e;border-color:#333;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+.piece.sel{transform:translate(-50%,-50%) scale(1.12);box-shadow:0 0 18px rgba(255,215,0,.9)!important;border-color:#ffd700!important}
+.piece.last-from{box-shadow:0 0 18px rgba(70,180,255,.7)!important}
+.piece.last-to{box-shadow:0 0 18px rgba(255,100,40,.7)!important}
+
+/* 提示点 */
+.hint-dot{position:absolute;width:14px;height:14px;border-radius:50%;background:rgba(0,170,0,.55);pointer-events:none;z-index:1;transform:translate(-50%,-50%)}
+.hint-ring{position:absolute;width:44px;height:44px;border-radius:50%;border:3px solid rgba(0,200,0,.65);pointer-events:none;z-index:1;transform:translate(-50%,-50%)}
+
+/* 面板 */
+.panel{display:flex;flex-direction:column;gap:14px;min-width:250px;max-width:270px}
+.card{background:#16213e;border-radius:10px;padding:16px;color:#e0e0e0;box-shadow:0 3px 12px rgba(0,0,0,.3)}
+.card h3{font-size:14px;color:#ffd700;margin-bottom:10px;border-bottom:1px solid #2a3a5c;padding-bottom:6px}
+.btn-r{display:flex;gap:6px;flex-wrap:wrap}
+.btn{padding:7px 14px;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600;transition:all .15s;font-family:inherit;white-space:nowrap}
+.btn:hover{transform:translateY(-1px);opacity:.9}
+.btn:active{transform:translateY(0)}
+.btn-on{background:#ffd700;color:#1a1a2e;box-shadow:0 0 10px rgba(255,215,0,.35)}
+.btn-off{background:#2a3a5c;color:#bbb}
+.btn-off:hover{background:#364a6c}
+.btn-rst{background:#c0392b;color:#fff;width:100%;padding:10px;font-size:14px}
+.btn-rst:hover{background:#e74c3c}
+.st{font-size:15px;font-weight:700;text-align:center;padding:8px;border-radius:6px}
+.st-play{background:#1a3a1a;color:#4caf50}
+.st-check{background:#3a2a00;color:#ff9800}
+.st-over{background:#3a1a1a;color:#f44336}
+.log{max-height:220px;overflow-y:auto;font-size:12px;line-height:1.8;font-family:'Courier New',monospace;min-height:40px}
+.log::-webkit-scrollbar{width:4px}
+.log::-webkit-scrollbar-thumb{background:#444;border-radius:2px}
+.log .en{padding:2px 6px;border-bottom:1px solid #1a1a3a}
+.log .en:nth-child(odd){background:#0f1a2e}
+.log .num{color:#ffd700;margin-right:6px}
+.log .rm{color:#e74c3c}
+.log .bm{color:#bbb}
+#errLog{background:#300;color:#f44;padding:8px;border-radius:4px;font-size:11px;max-height:100px;overflow:auto;display:none}
+</style>
+</head>
+<body>
+<div class="main">
+<div>
+<div class="board-wrap" id="boardWrap"></div>
+<div style="display:flex;justify-content:space-between;padding:0 24px;margin-top:2px"><span style="width:58px;text-align:center;font-size:11px;color:#6b5a3e">1</span><span style="width:58px;text-align:center;font-size:11px;color:#6b5a3e">2</span><span style="width:58px;text-align:center;font-size:11px;color:#6b5a3e">3</span><span style="width:58px;text-align:center;font-size:11px;color:#6b5a3e">4</span><span style="width:58px;text-align:center;font-size:11px;color:#6b5a3e">5</span><span style="width:58px;text-align:center;font-size:11px;color:#6b5a3e">6</span><span style="width:58px;text-align:center;font-size:11px;color:#6b5a3e">7</span><span style="width:58px;text-align:center;font-size:11px;color:#6b5a3e">8</span><span style="width:58px;text-align:center;font-size:11px;color:#6b5a3e">9</span></div>
+</div>
+<div class="panel">
+<div class="card"><h3>对局模式</h3><div class="btn-r" id="modeBtns"><button class="btn btn-on" data-mode="red">我执红方</button><button class="btn btn-off" data-mode="black">我执黑方</button></div></div>
+<div class="card"><h3>难度选择</h3><div class="btn-r" id="diffBtns"><button class="btn btn-off" data-diff="easy">初级</button><button class="btn btn-on" data-diff="medium">中级</button><button class="btn btn-off" data-diff="hard">高级</button></div></div>
+<div class="card"><h3>对局状态</h3><div class="st st-play" id="statusText">等待开始...</div></div>
+<div class="card"><div id="errLog"></div><h3>走棋记录</h3><div class="log" id="moveLog"><span style="color:#666">暂无记录</span></div></div>
+<div class="card"><button class="btn btn-rst" id="resetBtn">重置棋盘</button></div>
+</div>
+</div>
+
+<script>
+(function(){
+var el=document.getElementById('errLog');
+function logErr(msg){el.style.display='block';el.innerHTML+='<div>'+msg+'</div>';}
+window.onerror=function(m){logErr('ERROR: '+m);};
+
+var K='k',A='a',E='e',H='h',R='r',C='c',P='p';
+var RED='r',BLK='b';
+var NAMES={r:{k:'帅',a:'仕',e:'相',h:'馬',r:'車',c:'炮',p:'兵'},b:{k:'將',a:'士',e:'象',h:'馬',r:'車',c:'砲',p:'卒'}};
+var VALS={k:10000,r:900,c:450,h:400,e:200,a:200,p:100};
+var CS=58, M=24;
+var board,turn,over,mode='red',diff='medium',selR=-1,selC=-1,hist=[],moveNum=0;
+var wrap,pieces=[],hints=[];
+
+function playerClr(){return mode==='red'?RED:BLK;}
+function aiClr(){return mode==='red'?BLK:RED;}
+
+// ================== 棋盘初始化 ==================
+function initBd(){
+  board=[];for(var r=0;r<10;r++){board[r]=[];for(var c=0;c<9;c++)board[r][c]=null;}
+  function S(r,c,t,cl){board[r][c]={t:t,c:cl};}
+  S(0,0,R,BLK);S(0,1,H,BLK);S(0,2,E,BLK);S(0,3,A,BLK);S(0,4,K,BLK);S(0,5,A,BLK);S(0,6,E,BLK);S(0,7,H,BLK);S(0,8,R,BLK);
+  S(2,1,C,BLK);S(2,7,C,BLK);for(var c=0;c<9;c+=2)S(3,c,P,BLK);
+  for(var c=0;c<9;c+=2)S(6,c,P,RED);S(7,1,C,RED);S(7,7,C,RED);
+  S(9,0,R,RED);S(9,1,H,RED);S(9,2,E,RED);S(9,3,A,RED);S(9,4,K,RED);S(9,5,A,RED);S(9,6,E,RED);S(9,7,H,RED);S(9,8,R,RED);
+}
+
+// ================== 规则引擎 ==================
+function inB(r,c){return r>=0&&r<=9&&c>=0&&c<=8;}
+function inPal(r,c,cl){return cl===RED?(r>=7&&r<=9&&c>=3&&c<=5):(r>=0&&r<=2&&c>=3&&c<=5);}
+function xRiver(r,c,cl){return cl===RED?r<=4:r>=5;}
+function kPos(cl){for(var r=0;r<10;r++)for(var c=0;c<9;c++)if(board[r][c]&&board[r][c].t===K&&board[r][c].c===cl)return{r:r,c:c};return null;}
+function kFace(){
+  var rk=kPos(RED),bk=kPos(BLK);if(!rk||!bk||rk.c!==bk.c)return false;
+  var lo=Math.min(rk.r,bk.r),hi=Math.max(rk.r,bk.r);
+  for(var r=lo+1;r<hi;r++)if(board[r][rk.c])return false;
+  return true;
+}
+
+function rawMoves(r,c){
+  var p=board[r][c];if(!p)return[];var cl=p.c,t=p.t,m=[];
+  function add(tr,tc){if(inB(tr,tc)&&(!board[tr][tc]||board[tr][tc].c!==cl))m.push({r:tr,c:tc});}
+  if(t===K){for(var i=0;i<4;i++){var dr=[-1,1,0,0][i],dc=[0,0,-1,1][i];if(inPal(r+dr,c+dc,cl))add(r+dr,c+dc);}}
+  else if(t===A){for(var i=0;i<4;i++){var dr=[-1,-1,1,1][i],dc=[-1,1,-1,1][i];if(inPal(r+dr,c+dc,cl))add(r+dr,c+dc);}}
+  else if(t===E){
+    var st=[[-2,-2,-1,-1],[-2,2,-1,1],[2,-2,1,-1],[2,2,1,1]];
+    for(var i=0;i<4;i++){var dr=st[i][0],dc=st[i][1],er=st[i][2],ec=st[i][3];
+      if(inB(r+dr,c+dc)&&!board[r+er][c+ec]){if(cl===RED&&r+dr<5)continue;if(cl===BLK&&r+dr>4)continue;add(r+dr,c+dc);}}
+  }else if(t===H){
+    var st=[[-2,-1,-1,0],[-2,1,-1,0],[2,-1,1,0],[2,1,1,0],[-1,-2,0,-1],[-1,2,0,1],[1,-2,0,-1],[1,2,0,1]];
+    for(var i=0;i<8;i++){var dr=st[i][0],dc=st[i][1],lr=st[i][2],lc=st[i][3];if(!board[r+lr][c+lc])add(r+dr,c+dc);}
+  }else if(t===R){for(var i=0;i<4;i++){var dr=[-1,1,0,0][i],dc=[0,0,-1,1][i];var tr=r+dr,tc=c+dc;while(inB(tr,tc)){if(!board[tr][tc])add(tr,tc);else{if(board[tr][tc].c!==cl)add(tr,tc);break;}tr+=dr;tc+=dc;}}}
+  else if(t===C){for(var i=0;i<4;i++){var dr=[-1,1,0,0][i],dc=[0,0,-1,1][i];var tr=r+dr,tc=c+dc;while(inB(tr,tc)&&!board[tr][tc]){add(tr,tc);tr+=dr;tc+=dc;}if(inB(tr,tc)){tr+=dr;tc+=dc;}while(inB(tr,tc)){if(board[tr][tc]){if(board[tr][tc].c!==cl)add(tr,tc);break;}tr+=dr;tc+=dc;}}}
+  else if(t===P){var fwd=cl===RED?-1:1;add(r+fwd,c);if(xRiver(r,c,cl)){add(r,c-1);add(r,c+1);}}
+  return m;
+}
+
+function inCheck(cl){
+  var kp=kPos(cl);if(!kp)return true;
+  for(var r=0;r<10;r++)for(var c=0;c<9;c++)if(board[r][c]&&board[r][c].c!==cl)
+    {var rw=rawMoves(r,c);for(var i=0;i<rw.length;i++)if(rw[i].r===kp.r&&rw[i].c===kp.c)return true;}
+  return false;
+}
+function doMove(r1,c1,r2,c2){var cap=board[r2][c2];board[r2][c2]=board[r1][c1];board[r1][c1]=null;return cap;}
+function unMove(r1,c1,r2,c2,cap){board[r1][c1]=board[r2][c2];board[r2][c2]=cap;}
+function allMoves(cl){
+  var moves=[];
+  for(var r=0;r<10;r++)for(var c=0;c<9;c++)if(board[r][c]&&board[r][c].c===cl){
+    var rw=rawMoves(r,c);
+    for(var i=0;i<rw.length;i++){var cap=doMove(r,c,rw[i].r,rw[i].c);if(!inCheck(cl)&&!kFace())moves.push({fr:r,fc:c,tr:rw[i].r,tc:rw[i].c,cap:cap});unMove(r,c,rw[i].r,rw[i].c,cap);}
+  }
+  return moves;
+}
+function hasMove(cl){return allMoves(cl).length>0;}
+
+// ================== AI (same as before) ==================
+function bdEval(){
+  var sc=0;
+  for(var r=0;r<10;r++)for(var c=0;c<9;c++){
+    var p=board[r][c];if(!p)continue;var v=VALS[p.t];if(p.t===P&&xRiver(r,c,p.c))v=200;
+    var mul=p.c===aiClr()?1:-1;sc+=v*mul;
+    if(p.t===H&&c>=2&&c<=6)sc+=15*mul;if(p.t===H&&xRiver(r,c,p.c))sc+=25*mul;
+    if(p.t===R&&xRiver(r,c,p.c))sc+=20*mul;
+    if(p.t===P&&xRiver(r,c,p.c)){sc+=50*mul;if(c>=2&&c<=6)sc+=15*mul;if((p.c===RED&&r<=2)||(p.c===BLK&&r>=7))sc+=30*mul;}
+  }
+  if(inCheck(playerClr()))sc+=50;if(inCheck(aiClr()))sc-=50;return sc;
+}
+function orderMvs(m){return m.sort(function(a,b){return(b.cap?VALS[b.cap.t]*100:0)-(a.cap?VALS[a.cap.t]*100:0);});}
+function minimax(d,alpha,beta,maxing){
+  if(d===0)return bdEval();
+  var cl=maxing?aiClr():playerClr(),moves=allMoves(cl);
+  if(moves.length===0)return maxing?-99999+d:99999-d;
+  moves=orderMvs(moves);
+  if(maxing){var best=-Infinity;for(var i=0;i<moves.length;i++){var m=moves[i];doMove(m.fr,m.fc,m.tr,m.tc);var e=minimax(d-1,alpha,beta,false);unMove(m.fr,m.fc,m.tr,m.tc,m.cap);best=Math.max(best,e);alpha=Math.max(alpha,e);if(beta<=alpha)break;}return best;}
+  else{var best=Infinity;for(var i=0;i<moves.length;i++){var m=moves[i];doMove(m.fr,m.fc,m.tr,m.tc);var e=minimax(d-1,alpha,beta,true);unMove(m.fr,m.fc,m.tr,m.tc,m.cap);best=Math.min(best,e);beta=Math.min(beta,e);if(beta<=alpha)break;}return best;}
+}
+function aiBest(){
+  var moves=allMoves(aiClr());if(moves.length===0)return null;
+  if(diff==='easy'){var caps=moves.filter(function(m){return m.cap;});if(caps.length&&Math.random()<.6)return caps[Math.floor(Math.random()*caps.length)];return moves[Math.floor(Math.random()*moves.length)];}
+  if(diff==='medium'){
+    var scored=[];
+    for(var i=0;i<moves.length;i++){var m=moves[i],s=0;if(m.cap)s+=VALS[m.cap.t];
+      doMove(m.fr,m.fc,m.tr,m.tc);if(inCheck(playerClr()))s+=150;var dang=false;
+      for(var r=0;r<10&&!dang;r++)for(var c=0;c<9&&!dang;c++)if(board[r][c]&&board[r][c].c===playerClr()){var em=rawMoves(r,c);for(var j=0;j<em.length;j++)if(em[j].r===m.tr&&em[j].c===m.tc){dang=true;break;}}
+      if(dang&&board[m.tr][m.tc])s-=VALS[board[m.tr][m.tc].t]/2;unMove(m.fr,m.fc,m.tr,m.tc,m.cap);scored.push({m:m,s:s});}
+    scored.sort(function(a,b){return b.s-a.s;});return scored[Math.floor(Math.random()*Math.min(scored.length,Math.max(1,Math.floor(scored.length*.3))))].m;
+  }
+  var d=3,bs=-Infinity,bm=null,cand=orderMvs(moves.slice());if(cand.length>12)cand=cand.slice(0,12);
+  for(var i=0;i<cand.length;i++){var m=cand[i];doMove(m.fr,m.fc,m.tr,m.tc);var e=minimax(d-1,-Infinity,Infinity,false);unMove(m.fr,m.fc,m.tr,m.tc,m.cap);if(e>bs){bs=e;bm=m;}}
+  return bm;
+}
+
+// ================== DOM 渲染 ==================
+function xx(c){return M+c*CS;} // pixel x of column c
+function yy(r){return M+r*CS;} // pixel y of row r
+
+function buildBoardBg(){
+  wrap=document.getElementById('boardWrap');
+  wrap.innerHTML='';
+
+  // Vertical lines
+  for(var c=0;c<9;c++){
+    var dv=document.createElement('div');
+    if(c===0||c===8){
+      dv.className='line-v';
+      dv.style.left=xx(c)+'px';
+    }else{
+      dv.className='line-v-half';
+      dv.style.left=xx(c)+'px';
+      dv.style.top=M+'px';
+      dv.style.height=(CS*4-M)+'px'; // from top edge to river
+      // second half
+      var dv2=document.createElement('div');
+      dv2.className='line-v-half';
+      dv2.style.left=xx(c)+'px';
+      dv2.style.top=yy(5)+'px'; // from river to bottom
+      dv2.style.height=(CS*4)+'px';
+    }
+    wrap.appendChild(dv);
+    if(c!==0&&c!==8){wrap.appendChild(dv2);}
+  }
+
+  // Horizontal lines
+  for(var r=0;r<10;r++){
+    var dh=document.createElement('div');
+    dh.className='line-h';
+    dh.style.top=yy(r)+'px';
+    wrap.appendChild(dh);
+  }
+
+  // Palace diagonals (using SVG inline approach or just CSS borders)
+  // Actually let's use small positioned divs with transform rotate for diagonals
+  function addDiag(r1,c1,r2,c2){
+    var len=Math.sqrt(Math.pow(xx(c2)-xx(c1),2)+Math.pow(yy(r2)-yy(r1),2));
+    var ang=Math.atan2(yy(r2)-yy(r1),xx(c2)-xx(c1))*180/Math.PI;
+    var d=document.createElement('div');
+    d.style.cssText='position:absolute;left:'+xx(c1)+'px;top:'+yy(r1)+'px;width:'+len+'px;height:1px;background:#8b6914;transform:rotate('+ang+'deg);transform-origin:0 0;pointer-events:none';
+    wrap.appendChild(d);
+  }
+  addDiag(0,3,2,5);addDiag(0,5,2,3);
+  addDiag(7,3,9,5);addDiag(7,5,9,3);
+
+  // River text
+  var river=document.createElement('div');
+  river.className='river-text';
+  river.innerHTML='<span>楚 河</span><span style="margin-left:116px">汉 界</span>';
+  wrap.appendChild(river);
+}
+
+function renderBoard(){
+  buildBoardBg();
+
+  // Remove old pieces and hints
+  for(var i=0;i<pieces.length;i++){if(pieces[i].parentNode)pieces[i].parentNode.removeChild(pieces[i]);}
+  pieces=[];
+  for(var i=0;i<hints.length;i++){if(hints[i].parentNode)hints[i].parentNode.removeChild(hints[i]);}
+  hints=[];
+
+  // Draw pieces
+  for(var r=0;r<10;r++){
+    for(var c=0;c<9;c++){
+      var p=board[r][c];if(!p)continue;
+      var el=document.createElement('div');
+      el.className='piece '+(p.c===RED?'red':'black');
+      el.textContent=NAMES[p.c][p.t];
+      el.style.left=xx(c)+'px';
+      el.style.top=yy(r)+'px';
+      el.onclick=(function(rr,cc){return function(e){e.stopPropagation();onClick(rr,cc);};})(r,c);
+
+      if(r===selR&&c===selC)el.classList.add('sel');
+      if(hist.length>0){
+        var last=hist[hist.length-1];
+        if(r===last.fr&&c===last.fc)el.classList.add('last-from');
+        if(r===last.tr&&c===last.tc)el.classList.add('last-to');
+      }
+      wrap.appendChild(el);
+      pieces.push(el);
+    }
+  }
+
+  // Draw legal move hints
+  if(selR>=0&&selC>=0){
+    var rw=rawMoves(selR,selC);
+    for(var i=0;i<rw.length;i++){
+      var m=rw[i],cap=doMove(selR,selC,m.r,m.c),ok=!inCheck(playerClr())&&!kFace();
+      unMove(selR,selC,m.r,m.c,cap);
+      if(ok){
+        var h=document.createElement('div');
+        h.className=cap?'hint-ring':'hint-dot';
+        h.style.left=xx(m.c)+'px';
+        h.style.top=yy(m.r)+'px';
+        wrap.appendChild(h);
+        hints.push(h);
+      }
+    }
+  }
+
+  updateStatusDisplay();
+}
+
+// Click on empty intersection
+wrap=document.getElementById('boardWrap');
+wrap.addEventListener('click',function(e){
+  if(over||turn!==playerClr())return;
+  // Only respond to clicks on empty intersections (not on pieces)
+  if(e.target!==wrap)return;
+  var rect=wrap.getBoundingClientRect();
+  var mx=e.clientX-rect.left,my=e.clientY-rect.top;
+  var bestR=-1,bestC=-1,bestD=Infinity;
+  for(var r=0;r<10;r++){for(var c=0;c<9;c++){
+    var dx=mx-xx(c),dy=my-yy(r),d=dx*dx+dy*dy;
+    if(d<bestD){bestD=d;bestR=r;bestC=c;}
+  }}
+  if(bestD<CS*CS*0.25)onClick(bestR,bestC);
+});
+
+function onClick(r,c){
+  if(over||turn!==playerClr())return;
+  var p=board[r][c];
+  // If clicking own piece, select it
+  if(p&&p.c===playerClr()){selR=r;selC=c;renderBoard();return;}
+  // If a piece is selected and clicking a valid target, make the move
+  if(selR>=0&&selC>=0){
+    var rw=rawMoves(selR,selC),ok=false,cap=null;
+    for(var i=0;i<rw.length;i++){if(rw[i].r===r&&rw[i].c===c){cap=doMove(selR,selC,r,c);if(!inCheck(playerClr())&&!kFace())ok=true;else unMove(selR,selC,r,c,cap);break;}}
+    if(ok){
+      var mvPc=board[r][c];hist.push({fr:selR,fc:selC,tr:r,tc:c,pc:mvPc,cap:cap});
+      addLog(selR,selC,r,c,mvPc,cap,true);selR=-1;selC=-1;turn=aiClr();renderBoard();
+      if(!hasMove(aiClr())){over=true;document.getElementById('statusText').textContent='你赢了！AI被将死';document.getElementById('statusText').className='st st-over';renderBoard();return;}
+      setTimeout(aiMove,350);return;
+    }
+    // Invalid move - deselect
+    selR=-1;selC=-1;renderBoard();
+  }
+}
+
+function aiMove(){
+  if(over||turn!==aiClr())return;
+  var m=aiBest();
+  if(!m){over=true;document.getElementById('statusText').textContent='你赢了！AI无路可走';document.getElementById('statusText').className='st st-over';renderBoard();return;}
+  var pc=board[m.fr][m.fc],cap=doMove(m.fr,m.fc,m.tr,m.tc);
+  hist.push({fr:m.fr,fc:m.fc,tr:m.tr,tc:m.tc,pc:pc,cap:cap});
+  addLog(m.fr,m.fc,m.tr,m.tc,pc,cap,false);turn=playerClr();renderBoard();
+  if(!hasMove(playerClr())){over=true;document.getElementById('statusText').textContent='AI将死你了';document.getElementById('statusText').className='st st-over';renderBoard();}
+}
+
+function updateStatusDisplay(){
+  var el=document.getElementById('statusText');
+  if(over){el.textContent='游戏结束';el.className='st st-over';return;}
+  if(inCheck(turn)){el.textContent=(turn===playerClr()?'你':'AI')+'被将军！';el.className='st st-check';}
+  else{el.textContent=(turn===playerClr()?'你的':'AI')+'回合';el.className='st st-play';}
+}
+
+// ================== 记录 ==================
+function mvStr(fr,fc,tr,tc,pc){
+  var rCols=['九','八','七','六','五','四','三','二','一'],bCols=['1','2','3','4','5','6','7','8','9'];
+  var name=NAMES[pc.c][pc.t],fcStr=pc.c===RED?rCols[fc]:bCols[fc],tcStr=pc.c===RED?rCols[tc]:bCols[tc];
+  var act=fr===tr?'平':(pc.c===RED?(tr<fr?'进':'退'):(tr>fr?'进':'退'));
+  var diag=pc.t===H||pc.t===A||pc.t===E;
+  return name+fcStr+act+((act==='平'||diag)?tcStr:Math.abs(tr-fr)||Math.abs(tc-fc));
+}
+
+function addLog(fr,fc,tr,tc,pc,cap,isPl){
+  var el=document.getElementById('moveLog');
+  if(hist.length===1)el.innerHTML='';
+  if(isPl||hist.length%2===1){moveNum++;var d=document.createElement('div');d.className='en';d.innerHTML='<span class="num">'+moveNum+'.</span><span class="'+(pc.c===RED?'rm':'bm')+'">'+mvStr(fr,fc,tr,tc,pc)+'</span>';el.appendChild(d);el.scrollTop=el.scrollHeight;}
+  else{var last=el.lastElementChild;if(last)last.innerHTML+=' <span class="bm">'+mvStr(fr,fc,tr,tc,pc)+'</span>';}
+}
+
+// ================== 重置 ==================
+function reset(){
+  initBd();turn=RED;over=false;selR=-1;selC=-1;hist=[];moveNum=0;
+  document.getElementById('moveLog').innerHTML='<span style="color:#666">暂无记录</span>';
+  renderBoard();if(playerClr()===BLK)setTimeout(aiMove,400);
+}
+
+// ================== 按钮 ==================
+document.getElementById('modeBtns').addEventListener('click',function(e){
+  if(e.target.tagName!=='BUTTON')return;
+  var btns=document.querySelectorAll('#modeBtns button');for(var i=0;i<btns.length;i++)btns[i].className='btn btn-off';
+  e.target.className='btn btn-on';mode=e.target.dataset.mode;reset();
+});
+document.getElementById('diffBtns').addEventListener('click',function(e){
+  if(e.target.tagName!=='BUTTON')return;
+  var btns=document.querySelectorAll('#diffBtns button');for(var i=0;i<btns.length;i++)btns[i].className='btn btn-off';
+  e.target.className='btn btn-on';diff=e.target.dataset.diff;
+});
+document.getElementById('resetBtn').addEventListener('click',reset);
+
+// ================== 启动 ==================
+try{
+  initBd();turn=RED;renderBoard();if(playerClr()===BLK)setTimeout(aiMove,500);
+  logErr('Init OK. Board loaded. Pieces: '+pieces.length);
+}catch(e){logErr('Init failed: '+e.message);}
+
+})();
+</script>
+</body>
+</html>
