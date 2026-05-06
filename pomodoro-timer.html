@@ -8,10 +8,19 @@
 *{margin:0;padding:0;box-sizing:border-box}
 body{
   font-family:'Microsoft YaHei',sans-serif;
-  background:#1a1a2e;
+  background: url('pomodoro-bg.png') center/cover no-repeat fixed;
   display:flex;justify-content:center;align-items:center;
   min-height:100vh;user-select:none;
+  position:relative;
 }
+/* Dark overlay for readability */
+body::before{
+  content:'';position:fixed;inset:0;
+  background:rgba(0,0,0,.55);
+  z-index:0;
+}
+/* Lift content above overlay */
+body>*{position:relative;z-index:1;}
 
 .clock{
   background:#16213e;
